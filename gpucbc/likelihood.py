@@ -184,7 +184,7 @@ class CUPYGravitationalWaveTransient(Likelihood):
 
     def calculate_snrs(self, interferometer, waveform_polarizations, TD_polarization_tensors=None):
         name = interferometer.name
-        if TD_polarization_tensors=None:
+        if TD_polarization_tensors is None:
             signal_ifo = xp.sum(
                 xp.vstack(
                     [
