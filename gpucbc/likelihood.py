@@ -67,10 +67,6 @@ class CUPYGravitationalWaveTransient(Likelihood):
             self.chirpTime_WFdict = lal.CreateDict()
             self.fISCO_constant = xp.asarray(np.power(1/np.sqrt(6), 3)*(1/np.pi))
 
-
-                v_ISCO = xp.divide(1., xp.sqrt(6.))
-    f_ISCO = xp.divide(xp.power(v_ISCO, 3), xp.multiply(np.pi, Mtot_s))
-
     def _data_to_gpu(self):
         for ifo in self.interferometers:
             self.psds[ifo.name] = xp.asarray(
@@ -331,58 +327,58 @@ class CUPYGravitationalWaveTransient(Likelihood):
     
         return dict(plus = plus_pol_tensor, cross = cross_pol_tensor)
 
-def TF2_PhaseDerivative(self, Mf, pn_coeff):
-    # see https://git.ligo.org/lscsoft/lalsuite/-/blob/master/lalsimulation/lib/LALSimIMRPhenomD_internals.c#L1102
-    
-    v = xp.cbrt(xp.multiply(np.pi,Mf)) # make this for all Freqs at once!
-    logv = xp.log(v) #check if this should be log10 or ln
-    v2 = xp.multiply(v,v)
-    v3 = xp.multiply(v2,v)
-    v4 = xp.multiply(v3,v)
-    v5 = xp.multiply(v4,v)
-    v6 = xp.multiply(v5,v)
-    v7 = xp.multiply(v6,v)
-    v8 = xp.multiply(v7,v)
-    
-    Dphasing = xp.multiply(2.0 * pn_coeff.v[7], v7)
-    Dphasing = xp.add(Dphasing, xp.multiply(xp.add(pn_coeff.v[6], 
-        xp.multiply(pn_coeff.vlogv[6], xp.add(1., logv))), v6))
-    Dphasing = xp.add(Dphasing, xp.multiply(pn_coeff.vlogv[5], v5))
-    Dphasing = xp.add(Dphasing, xp.multiply(-1. * pn_coeff.v[4], v4))
-    Dphasing = xp.add(Dphasing, xp.multiply(-2. * pn_coeff.v[3], v3))
-    Dphasing = xp.add(Dphasing, xp.multiply(-3. * pn_coeff.v[2], v2))
-    Dphasing = xp.add(Dphasing, xp.multiply(-4. * pn_coeff.v[1], v))
-    Dphasing = xp.add(Dphasing, -5. * pn_coeff.v[0])
-    Dphasing = xp.divide(Dphasing, xp.multiply(3., v8))
-    Dphasing = xp.multiply(Dphasing, np.pi)
-                    
-    return Dphasing
+    def TF2_PhaseDerivative(self, Mf, pn_coeff):
+        # see https://git.ligo.org/lscsoft/lalsuite/-/blob/master/lalsimulation/lib/LALSimIMRPhenomD_internals.c#L1102
+        
+        v = xp.cbrt(xp.multiply(np.pi,Mf)) # make this for all Freqs at once!
+        logv = xp.log(v) #check if this should be log10 or ln
+        v2 = xp.multiply(v,v)
+        v3 = xp.multiply(v2,v)
+        v4 = xp.multiply(v3,v)
+        v5 = xp.multiply(v4,v)
+        v6 = xp.multiply(v5,v)
+        v7 = xp.multiply(v6,v)
+        v8 = xp.multiply(v7,v)
+        
+        Dphasing = xp.multiply(2.0 * pn_coeff.v[7], v7)
+        Dphasing = xp.add(Dphasing, xp.multiply(xp.add(pn_coeff.v[6], 
+            xp.multiply(pn_coeff.vlogv[6], xp.add(1., logv))), v6))
+        Dphasing = xp.add(Dphasing, xp.multiply(pn_coeff.vlogv[5], v5))
+        Dphasing = xp.add(Dphasing, xp.multiply(-1. * pn_coeff.v[4], v4))
+        Dphasing = xp.add(Dphasing, xp.multiply(-2. * pn_coeff.v[3], v3))
+        Dphasing = xp.add(Dphasing, xp.multiply(-3. * pn_coeff.v[2], v2))
+        Dphasing = xp.add(Dphasing, xp.multiply(-4. * pn_coeff.v[1], v))
+        Dphasing = xp.add(Dphasing, -5. * pn_coeff.v[0])
+        Dphasing = xp.divide(Dphasing, xp.multiply(3., v8))
+        Dphasing = xp.multiply(Dphasing, np.pi)
+                        
+        return Dphasing
 
-def TF2_chirpTime(self, fseries_Hz, m1, m2, chi1z, chi2z, WFdict):
-    
-    pn = lalsim.SimInspiralTaylorF2AlignedPhasing(m1, m2, chi1z, chi2z, WFdict)
-    
-    Mtot = m1+m2
-    
-    Mtot_s = Mtot*lal.MTSUN_SI
-    Mf = xp.multiply(Mtot_s,fseries_Hz) #[below_fISCO]
-    #make this take fSeries as input
-    
-    #v_ISCO = xp.divide(1., xp.sqrt(6.))
-    #f_ISCO = xp.divide(xp.power(v_ISCO, 3), xp.multiply(np.pi, Mtot_s))
-    f_ISCO = xp.divide(self.fISCO_constant, Mtot_s)
-    # store all but Mtot_s as a constant, 
-    
-    #print(Mf)
-    
-    dPhi = self.TF2_PhaseDerivative(Mf, pn)
-    dPhi_ISCO = self.TF2_PhaseDerivative(Mtot_s*f_ISCO, pn)
+    def TF2_chirpTime(self, fseries_Hz, m1, m2, chi1z, chi2z, WFdict):
+        
+        pn = lalsim.SimInspiralTaylorF2AlignedPhasing(m1, m2, chi1z, chi2z, WFdict)
+        
+        Mtot = m1+m2
+        
+        Mtot_s = Mtot*lal.MTSUN_SI
+        Mf = xp.multiply(Mtot_s,fseries_Hz) #[below_fISCO]
+        #make this take fSeries as input
+        
+        #v_ISCO = xp.divide(1., xp.sqrt(6.))
+        #f_ISCO = xp.divide(xp.power(v_ISCO, 3), xp.multiply(np.pi, Mtot_s))
+        f_ISCO = xp.divide(self.fISCO_constant, Mtot_s)
+        # store all but Mtot_s as a constant, 
+        
+        #print(Mf)
+        
+        dPhi = self.TF2_PhaseDerivative(Mf, pn)
+        dPhi_ISCO = self.TF2_PhaseDerivative(Mtot_s*f_ISCO, pn)
 
-    dPhi_diff = xp.subtract(dPhi_ISCO, dPhi)
-    
-    ChirpTimeSec = xp.divide(xp.multiply(dPhi_diff,Mtot_s),(2*np.pi))
-    
-    return ChirpTimeSec
+        dPhi_diff = xp.subtract(dPhi_ISCO, dPhi)
+        
+        ChirpTimeSec = xp.divide(xp.multiply(dPhi_diff,Mtot_s),(2*np.pi))
+        
+        return ChirpTimeSec
 
 
 
