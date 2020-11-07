@@ -49,10 +49,13 @@ class TF2(object):
     ):
         self.mass_1 = mass_1
         self.mass_2 = mass_2
+        self.total_mass = self.mass_1 + self.mass_2
+        self.symmetric_mass_ratio = self.mass_1 * self.mass_2 / np.square(self.total_mass)
+
         self.chi_1 = chi_1
         self.chi_2 = chi_2
-        self.total_mass = mass_1 + mass_2
-        self.symmetric_mass_ratio = mass_1 * mass_2 / self.total_mass ** 2
+
+        self.luminosity_distance = luminosity_distance * MEGA_PARSEC_SI
 
         self.lambda_1 = float(lambda_1)
         self.lambda_2 = float(lambda_2)
@@ -61,19 +64,21 @@ class TF2(object):
         ls.SimInspiralWaveformParamsInsertTidalLambda2(self.param_dict, self.lambda_2)
         ls.SimInspiralSetQuadMonParamsFromLambdas(self.param_dict)
 
-        self.luminosity_distance = luminosity_distance * MEGA_PARSEC_SI
 
     def __call__(self, frequency_array, tc=0, phi_c=0):
         orbital_speed = self.orbital_speed(frequency_array=frequency_array)
         hoff = self.amplitude(frequency_array, orbital_speed=orbital_speed) * xp.exp(
-            -1j * self.phase(frequency_array, phi_c=phi_c, orbital_speed=orbital_speed)
+            xp.multiply(-1j, self.phase(frequency_array, 
+                phi_c=phi_c, orbital_speed=orbital_speed))
         )
         return hoff
 
     def orbital_speed(self, frequency_array):
-        return (np.pi * self.total_mass * SOLAR_RADIUS_IN_S * frequency_array) ** (
-            1 / 3
-        )
+        orbital_speed_coefficient = np.pi * self.total_mass * SOLAR_RADIUS_IN_S
+        return xp.power(xp.multiply(orbital_speed_coefficient, frequency_array), 1./3)
+        #return (np.pi * self.total_mass * SOLAR_RADIUS_IN_S * frequency_array) ** (
+        #    1 / 3
+        #)
 
     def amplitude(self, frequency_array, orbital_speed=None):
         if orbital_speed is None:
@@ -85,10 +90,13 @@ class TF2(object):
             / self.luminosity_distance
             * SOLAR_RADIUS_IN_M
             * SOLAR_RADIUS_IN_S
-            * (np.pi / 12) ** 0.5
+            * np.sqrt(np.pi / 12)
         )
-        d_energy_d_flux = 5 / 32 / self.symmetric_mass_ratio / orbital_speed ** 9
-        amp = amp_0 * d_energy_d_flux ** 0.5 * orbital_speed
+        #d_energy_d_flux = 5 / 32 / self.symmetric_mass_ratio / orbital_speed ** 9
+        d_energy_d_flux_numbers = 5 / (32 * self.symmetric_mass_ratio)
+        d_energy_d_flux = xp.divide(d_energy_d_flux_numbers, xp.power(orbital_speed, 9))
+        #amp = amp_0 * d_energy_d_flux ** 0.5 * orbital_speed
+        amp = xp.multiply(amp_0, xp.multiply(xp.sqrt(d_energy_d_flux), orbital_speed))
 
         return amp
 
@@ -99,27 +107,29 @@ class TF2(object):
             self.mass_1, self.mass_2, self.chi_1, self.chi_2, self.param_dict
         )
         phasing = xp.zeros_like(orbital_speed)
-        cumulative_power_frequency = orbital_speed ** -5
+        #cumulative_power_frequency = orbital_speed ** -5
+        cumulative_power_frequency = xp.power(orbital_speed, -5)
+        log_orbital_speed = xp.log(orbital_speed)
         for ii in range(len(phase_coefficients.v)):
-            phasing += phase_coefficients.v[ii] * cumulative_power_frequency
-            phasing += (
-                phase_coefficients.vlogv[ii]
-                * cumulative_power_frequency
-                * xp.log(orbital_speed)
-            )
-            cumulative_power_frequency *= orbital_speed
+            #phasing += phase_coefficients.v[ii] * cumulative_power_frequency
+            phasing = xp.add(phasing, xp.multiply(phase_coefficients.v[ii], 
+                cumulative_power_frequency))
+            #phasing += (
+            #    phase_coefficients.vlogv[ii]
+            #    * cumulative_power_frequency
+            #    * xp.log(orbital_speed)
+            #)
+            cpf_los = xp.multiply(cumulative_power_frequency, log_orbital_speed)
+            phasing = xp.add(phasing, xp.multiply(phase_coefficients.vlogv[ii], cpf_los))
 
-        phasing -= 2 * phi_c + np.pi / 4
+            #cumulative_power_frequency *= orbital_speed
+            cumulative_power_frequency = xp.multiply(cumulative_power_frequency, orbital_speed)
+
+        #phasing -= 2 * phi_c + np.pi / 4
+        extra_phasing_term = (2*phi_c) + (np.pi/4)
+        phasing = xp.subtract(phasing, extra_phasing_term)
 
         return phasing
-
-
-class TF2_np(TF2):
-    def __call__(self, frequency_array, tc=0, phi_c=0):
-        return self.amplitude(frequency_array) * np.exp(
-            -1j * self.phase(frequency_array)
-        )
-
 
 def call_cupy_tf2(
     frequency_array,
@@ -139,26 +149,36 @@ def call_cupy_tf2(
     waveform_kwargs.update(kwargs)
     minimum_frequency = waveform_kwargs["minimum_frequency"]
 
-    in_band = frequency_array >= minimum_frequency
-
     frequency_array = xp.asarray(frequency_array)
 
-    h_out_of_band = xp.zeros(int(xp.sum(~in_band)))
+    #in_band = frequency_array >= minimum_frequency
+    in_band = xp.greater_equal(frequency_array, minimum_frequency)
+
+    
+
+    h_out_of_band = xp.zeros(int(xp.sum(xp.bitwise_not(in_band))))
 
     wf = TF2(
-        mass_1,
-        mass_2,
-        chi_1,
-        chi_2,
-        lambda_1=lambda_1,
-        lambda_2=lambda_2,
+        mass_1=mass_1,
+        mass_2=mass_2,
+        chi_1=chi_1,
+        chi_2=chi_2,
         luminosity_distance=luminosity_distance,
+        lambda_1=lambda_1,
+        lambda_2=lambda_2
     )
     strain = wf(frequency_array[in_band], phi_c=phase)
-    h_plus = xp.hstack([h_out_of_band, strain]) * (1 + np.cos(theta_jn) ** 2) / 2
-    h_cross = (
-        xp.hstack([h_out_of_band, strain]) * xp.exp(-1j * np.pi / 2) * np.cos(theta_jn)
-    )
+    
+    #h_plus = xp.hstack([h_out_of_band, strain]) * (1 + np.cos(theta_jn) ** 2) / 2
+    h_plus_extra_bits = (1 + np.square(np.cos(theta_jn)))/2
+    h_plus = xp.multiply(xp.hstack([h_out_of_band, strain]), h_plus_extra_bits)
+
+    #h_cross = (
+    #    xp.hstack([h_out_of_band, strain]) * xp.exp(-1j * np.pi / 2) * np.cos(theta_jn)
+    #)
+    h_cross_extra_bits = np.exp(-1j * np.pi / 2)*np.cos(theta_jn)
+    h_cross = xp.multiply(xp.hstack([h_out_of_band, strain]), h_cross_extra_bits)
+
 
     return dict(plus=h_plus, cross=h_cross)
 
