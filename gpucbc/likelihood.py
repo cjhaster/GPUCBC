@@ -323,7 +323,7 @@ class CUPYGravitationalWaveTransient(Likelihood):
         n = xp.add(xp.multiply(minus_u, cos_psi), xp.multiply(v, sin_psi))
     
         plus_pol_tensor = xp.einsum('i...,j...->ij...', m, m) - xp.einsum('i...,j...->ij...', n, n)
-        cross_pol_tensor = xp.einsum('i...,j...->ij...', m, n) - xp.einsum('i...,j...->ij...', n, m)
+        cross_pol_tensor = xp.einsum('i...,j...->ij...', m, n) + xp.einsum('i...,j...->ij...', n, m)
     
         return dict(plus = plus_pol_tensor, cross = cross_pol_tensor)
 
