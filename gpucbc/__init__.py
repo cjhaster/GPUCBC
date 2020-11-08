@@ -1,5 +1,5 @@
 from . import likelihood, waveforms
-
+import sys
 
 def disable_cupy():
     import numpy
@@ -16,7 +16,9 @@ def enable_cupy():
         likelihood.xp = cupy
         likelihood.i0e = i0e
         waveforms.xp = cupy
-    except ImportError:
+    except ImportError as exc:
+        sys.stderr.write("Error: failed to import settings module ({})".format(exc))
+        #except ImportError:
         print("Cannot import cupy")
         disable_cupy()
 
