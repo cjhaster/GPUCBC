@@ -87,7 +87,7 @@ class CUPYGravitationalWaveTransient(Likelihood):
 
         gmst_array = np.zeros_like(GPStime_array)
         for i in range(len(gmst_array)):
-            gmst_array[i] = lal.GreenwichMeanSiderealTime(lal.LIGOTimeGPS(GPStimes[i]))
+            gmst_array[i] = lal.GreenwichMeanSiderealTime(lal.LIGOTimeGPS(GPStime_array[i]))
 
         intercept, slope = np.polynomial.polynomial.polyfit(GPStime_array, gmst_array, 1, full=False)
 
