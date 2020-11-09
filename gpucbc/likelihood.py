@@ -153,14 +153,15 @@ class CUPYGravitationalWaveTransient(Likelihood):
             timeAtFreq_GPSseconds = xp.subtract(self.parameters["geocent_time"], chirptimes_seconds)
             timeAtFreq_gmst = self.gmst_interpolant(timeAtFreq_GPSseconds)
 
-            td_pol_tensors = self.TD_polarization_tensors(
-                                    self.parameters["ra"],
-                                    self.parameters["dec"],
-                                    self.parameters["psi"],
-                                    timeAtFreq_gmst
-                                    )
+            td_pol_tensors, timeDelay_omega = self.TD_polarization_tensors(
+                                                    self.parameters["ra"],
+                                                    self.parameters["dec"],
+                                                    self.parameters["psi"],
+                                                    timeAtFreq_gmst
+                                                    )
         else:
             td_pol_tensors = None
+            timeDelay_omega = None
 
         d_inner_h = 0
         h_inner_h = 0
@@ -169,7 +170,8 @@ class CUPYGravitationalWaveTransient(Likelihood):
             d_inner_h_ifo, h_inner_h_ifo = self.calculate_snrs(
                 interferometer=interferometer,
                 waveform_polarizations=waveform_polarizations,
-                TD_polarization_tensors=td_pol_tensors
+                TD_polarization_tensors=td_pol_tensors,
+                TimeDelay_omega=timeDelay_omega
             )
             d_inner_h += d_inner_h_ifo
             h_inner_h += h_inner_h_ifo
@@ -186,7 +188,7 @@ class CUPYGravitationalWaveTransient(Likelihood):
             log_l = -2 / self.duration * (h_inner_h - 2 * xp.real(d_inner_h))
         return float(log_l.real)
 
-    def calculate_snrs(self, interferometer, waveform_polarizations, TD_polarization_tensors=None):
+    def calculate_snrs(self, interferometer, waveform_polarizations, TD_polarization_tensors=None, TimeDelay_omega=None):
         name = interferometer.name
         if TD_polarization_tensors is None:
             signal_ifo = xp.sum(
@@ -207,6 +209,20 @@ class CUPYGravitationalWaveTransient(Likelihood):
                 ),
                 axis=0,
             )[interferometer.frequency_mask]
+
+            time_delay = (
+                self.parameters["geocent_time"]
+                - interferometer.strain_data.start_time
+                + interferometer.time_delay_from_geocenter(
+                                self.parameters["ra"],
+                                self.parameters["dec"],
+                                self.parameters["geocent_time"]
+                                )
+                            )
+
+            #signal_ifo *= xp.exp(-2j * np.pi * time_delay * self.frequency_array)
+            time_delay_numbers = xp.asarray(-2j * np.pi * time_delay)
+            signal_ifo = xp.multiply(signal_ifo, xp.exp(xp.multiply(time_delay_numbers, self.frequency_array)))
         else:
             signal_ifo = xp.sum(
                 xp.vstack(
@@ -221,20 +237,13 @@ class CUPYGravitationalWaveTransient(Likelihood):
                 axis=0,
             )#[interferometer.frequency_mask]
 
-
-        time_delay = (
-            self.parameters["geocent_time"]
-            - interferometer.strain_data.start_time
-            + interferometer.time_delay_from_geocenter(
-                self.parameters["ra"],
-                self.parameters["dec"],
-                self.parameters["geocent_time"],
-            )
-        )
-
-        #signal_ifo *= xp.exp(-2j * np.pi * time_delay * self.frequency_array)
-        time_delay_numbers = xp.asarray(-2j * np.pi * time_delay)
-        signal_ifo = xp.multiply(signal_ifo, xp.exp(xp.multiply(time_delay_numbers, self.frequency_array)))
+            time_delay_time_numbers = self.parameters["geocent_time"] 
+                                        - interferometer.strain_data.start_time
+            TD_time_delay_f_gc = timeDelay_from_GeoCenter(interferometer.geometry.vertex, TimeDelay_omega)
+            TD_time_delay = xp.add(time_delay_time_numbers, TD_time_delay_f_gc)
+            time_delay_numbers = xp.multiply(-2j * np.pi, TD_time_delay)
+            #signal_ifo *= xp.exp(-2j * np.pi * time_delay * self.frequency_array)
+            signal_ifo = xp.multiply(signal_ifo, xp.exp(xp.multiply(time_delay_numbers, self.frequency_array)))
 
         #d_inner_h = xp.sum(xp.conj(signal_ifo) * self.strain[name] / self.psds[name])
         d_inner_h = xp.sum(xp.divide(xp.multiply(xp.conj(signal_ifo), self.strain[name]),
@@ -328,8 +337,18 @@ class CUPYGravitationalWaveTransient(Likelihood):
     
         plus_pol_tensor = xp.einsum('i...,j...->ij...', m, m) - xp.einsum('i...,j...->ij...', n, n)
         cross_pol_tensor = xp.einsum('i...,j...->ij...', m, n) + xp.einsum('i...,j...->ij...', n, m)
-    
-        return dict(plus = plus_pol_tensor, cross = cross_pol_tensor)
+
+        #timeDelay
+        # https://git.ligo.org/lscsoft/bilby/-/blob/master/bilby/gw/detector/interferometer.py#L472
+        # https://git.ligo.org/lscsoft/bilby/-/blob/master/bilby/gw/utils.py#L93
+        omega = xp.array([xp.multiply(sin_theta, cos_phi), xp.multiply(sin_theta, sin_phi), cos_theta])
+
+        return dict(plus = plus_pol_tensor, cross = cross_pol_tensor), omega
+
+    def timeDelay_from_GeoCenter(detector_vertex, omega):
+        GeoCenter_vertex = np.array([0, 0, 0])
+        delta_d = xp.array(GeoCenter_vertex - detector_vertex)
+        return xp.divide(xp.einsum('i...,i->...', omega, delta_d), lal.C_SI)
 
     def TF2_PhaseDerivative(self, Mf, pn_coeff):
         # see https://git.ligo.org/lscsoft/lalsuite/-/blob/master/lalsimulation/lib/LALSimIMRPhenomD_internals.c#L1102
