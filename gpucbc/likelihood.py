@@ -211,7 +211,7 @@ class CUPYGravitationalWaveTransient(Likelihood):
             signal_ifo = xp.sum(
                 xp.vstack(
                     [
-                        xp.multiply(waveform_polarizations[mode],
+                        xp.multiply(waveform_polarizations[mode][interferometer.frequency_mask],
                             self.TD_antenna_response(
                                 detector_tensor=xp.asarray(interferometer.detector_tensor),
                                 TD_polarization_tensor=TD_polarization_tensors[mode]))
@@ -219,7 +219,7 @@ class CUPYGravitationalWaveTransient(Likelihood):
                     ]
                 ),
                 axis=0,
-            )[interferometer.frequency_mask]
+            )#[interferometer.frequency_mask]
 
 
         time_delay = (
