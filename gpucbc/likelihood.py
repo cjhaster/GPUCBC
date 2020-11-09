@@ -8,8 +8,10 @@ except ImportError:
     from scipy.special import i0e, logsumexp
 
 from bilby.core.likelihood import Likelihood
+from bilby.gw.conversion import convert_to_lal_binary_black_hole_parameters
 
 import lal
+import lalsimulation as lalsim
 
 
 class CUPYGravitationalWaveTransient(Likelihood):
@@ -138,13 +140,15 @@ class CUPYGravitationalWaveTransient(Likelihood):
 
         if self.td_antenna_pattern:
 
-            TF2_chirpTime(self, fseries_Hz, m1, m2, chi1z, chi2z, WFdict)
+            all_parameters, _ = convert_to_lal_binary_black_hole_parameters(self.parameters.copy())
+
+            #TF2_chirpTime(self, fseries_Hz, m1, m2, chi1z, chi2z, WFdict)
             chirptimes_seconds = self.TF2_chirpTime(
                 fseries_Hz=self.frequency_array, 
-                m1=self.parameters["mass_1"], 
-                m2=self.parameters["mass_2"], 
-                chi1z=self.parameters["chi_1"], 
-                chi2z=self.parameters["chi_2"], 
+                m1=all_parameters["mass_1"], 
+                m2=all_parameters["mass_2"], 
+                chi1z=all_parameters["chi_1"], 
+                chi2z=all_parameters["chi_2"], 
                 WFdict=self.chirpTime_WFdict)
             timeAtFreq_GPSseconds = xp.subtract(self.parameters["geocent_time"], chirptimes_seconds)
             timeAtFreq_gmst = self.gmst_interpolant(timeAtFreq_GPSseconds)
@@ -311,7 +315,7 @@ class CUPYGravitationalWaveTransient(Likelihood):
     
     
         u = xp.array([xp.multiply(cos_phi, cos_theta), xp.multiply(sin_phi, cos_theta), \
-                  xp.multiply(-1., xp.full_like(gmst_array, sin_theta))])
+                  xp.multiply(-1., sin_theta)])
         v = xp.array([xp.multiply(-1., sin_phi), cos_phi, xp.zeros_like(gmst_array)])
     
         sin_psi = xp.sin(psi)
