@@ -291,7 +291,7 @@ class CUPYGravitationalWaveTransient(Likelihood):
         #h_inner_h = xp.sum(xp.abs(signal_ifo) ** 2 / self.psds[name])
         h_inner_h = xp.sum(xp.divide(xp.square(xp.abs(signal_ifo)), self.psds[name]))
 
-        complex_matched_filter_snr = xp.divide(d_inner_h, xp.sqrt(optimal_snr_squared))
+        complex_matched_filter_snr = xp.divide(d_inner_h, xp.sqrt(h_inner_h))
 
         return self._CalculatedSNRs(
             d_inner_h=d_inner_h, 
