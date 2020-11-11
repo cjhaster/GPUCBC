@@ -15,6 +15,13 @@ import lalsimulation as lalsim
 
 
 class CUPYGravitationalWaveTransient(Likelihood):
+
+    _CalculatedSNRs = namedtuple('CalculatedSNRs',
+                                 ['d_inner_h',
+                                  'optimal_snr_squared',
+                                  'complex_matched_filter_snr',
+                                  'd_inner_h_squared_tc_array'])
+
     def __init__(
         self,
         interferometers,
@@ -63,6 +70,7 @@ class CUPYGravitationalWaveTransient(Likelihood):
         if self.phase_marginalization:
             priors["phase"] = 0.0
         self.time_marginalization = False
+        self.d_inner_h_squared_tc_array = None
         self.td_antenna_pattern = td_antenna_pattern
         if self.td_antenna_pattern:
             self._setup_gmst_interpolant()
@@ -167,14 +175,17 @@ class CUPYGravitationalWaveTransient(Likelihood):
         h_inner_h = 0
 
         for interferometer in self.interferometers:
-            d_inner_h_ifo, h_inner_h_ifo = self.calculate_snrs(
-                interferometer=interferometer,
+            #d_inner_h_ifo, h_inner_h_ifo = self.calculate_snrs(
+            per_detector_snr = self.calculate_snrs(
                 waveform_polarizations=waveform_polarizations,
+                interferometer=interferometer,
                 TD_polarization_tensors=td_pol_tensors,
                 TimeDelay_omega=timeDelay_omega
             )
-            d_inner_h += d_inner_h_ifo
-            h_inner_h += h_inner_h_ifo
+            #d_inner_h += d_inner_h_ifo
+            #h_inner_h += h_inner_h_ifo
+            d_inner_h += per_detector_snr.d_inner_h
+            h_inner_h += per_detector_snr.optimal_snr_squared
 
         if self.distance_marginalization:
             log_l = self.distance_marglinalized_likelihood(
@@ -188,41 +199,69 @@ class CUPYGravitationalWaveTransient(Likelihood):
             log_l = -2 / self.duration * (h_inner_h - 2 * xp.real(d_inner_h))
         return float(log_l.real)
 
-    def calculate_snrs(self, interferometer, waveform_polarizations, TD_polarization_tensors=None, TimeDelay_omega=None):
+    def calculate_snrs(self, waveform_polarizations, interferometer, TD_polarization_tensors=None, TimeDelay_omega=None):
         name = interferometer.name
         if TD_polarization_tensors is None:
-            signal_ifo = xp.sum(
-                xp.vstack(
-                    [
-                        waveform_polarizations[mode]
-                        * float(
-                            interferometer.antenna_response(
-                                self.parameters["ra"],
-                                self.parameters["dec"],
-                                self.parameters["geocent_time"],
-                                self.parameters["psi"],
-                                mode,
-                            )
-                        )
-                        for mode in waveform_polarizations
-                    ]
-                ),
-                axis=0,
-            )[interferometer.frequency_mask]
-
-            time_delay = (
-                self.parameters["geocent_time"]
-                - interferometer.strain_data.start_time
-                + interferometer.time_delay_from_geocenter(
-                                self.parameters["ra"],
-                                self.parameters["dec"],
-                                self.parameters["geocent_time"]
+            if not self.td_antenna_pattern:
+                signal_ifo = xp.sum(
+                    xp.vstack(
+                        [
+                            waveform_polarizations[mode]
+                            * float(
+                                interferometer.antenna_response(
+                                    self.parameters["ra"],
+                                    self.parameters["dec"],
+                                    self.parameters["geocent_time"],
+                                    self.parameters["psi"],
+                                    mode,
                                 )
                             )
+                            for mode in waveform_polarizations
+                        ]
+                    ),
+                    axis=0,
+                )[interferometer.frequency_mask]
 
-            #signal_ifo *= xp.exp(-2j * np.pi * time_delay * self.frequency_array)
-            time_delay_numbers = xp.asarray(-2j * np.pi * time_delay)
-            signal_ifo = xp.multiply(signal_ifo, xp.exp(xp.multiply(time_delay_numbers, self.frequency_array)))
+                time_delay = (
+                    self.parameters["geocent_time"]
+                    - interferometer.strain_data.start_time
+                    + interferometer.time_delay_from_geocenter(
+                                    self.parameters["ra"],
+                                    self.parameters["dec"],
+                                    self.parameters["geocent_time"]
+                                    )
+                                )
+
+                #signal_ifo *= xp.exp(-2j * np.pi * time_delay * self.frequency_array)
+                time_delay_numbers = xp.asarray(-2j * np.pi * time_delay)
+                signal_ifo = xp.multiply(signal_ifo, xp.exp(xp.multiply(time_delay_numbers, self.frequency_array)))
+            else:
+                ll_parameters, _ = convert_to_lal_binary_black_hole_parameters(self.parameters.copy())
+
+                #TF2_chirpTime(self, fseries_Hz, m1, m2, chi1z, chi2z, WFdict)
+                chirptimes_seconds = self.TF2_chirpTime(
+                    fseries_Hz=self.frequency_array, 
+                    m1=all_parameters["mass_1"], 
+                    m2=all_parameters["mass_2"], 
+                    chi1z=all_parameters["chi_1"], 
+                    chi2z=all_parameters["chi_2"], 
+                    WFdict=self.chirpTime_WFdict)
+                timeAtFreq_GPSseconds = xp.subtract(self.parameters["geocent_time"], chirptimes_seconds)
+                timeAtFreq_gmst = self.gmst_interpolant(timeAtFreq_GPSseconds)
+
+                td_pol_tensors, timeDelay_omega = self.TD_polarization_tensors(
+                                                    self.parameters["ra"],
+                                                    self.parameters["dec"],
+                                                    self.parameters["psi"],
+                                                    timeAtFreq_gmst
+                                                    )
+                return self.calculate_snrs(
+                                waveform_polarizations=waveform_polarizations,
+                                interferometer=interferometer,
+                                TD_polarization_tensors=td_pol_tensors,
+                                TimeDelay_omega=timeDelay_omega
+                                )
+
         else:
             signal_ifo = xp.sum(
                 xp.vstack(
@@ -249,7 +288,14 @@ class CUPYGravitationalWaveTransient(Likelihood):
             self.psds[name]))
         #h_inner_h = xp.sum(xp.abs(signal_ifo) ** 2 / self.psds[name])
         h_inner_h = xp.sum(xp.divide(xp.square(xp.abs(signal_ifo)), self.psds[name]))
-        return d_inner_h, h_inner_h
+
+        complex_matched_filter_snr = xp.divide(d_inner_h, xp.sqrt(optimal_snr_squared))
+
+        return self._CalculatedSNRs(
+            d_inner_h=d_inner_h, 
+            optimal_snr_squared=h_inner_h,
+            complex_matched_filter_snr=complex_matched_filter_snr,
+            d_inner_h_squared_tc_array=self.d_inner_h_squared_tc_array)
 
     def distance_marglinalized_likelihood(self, d_inner_h, h_inner_h):
         d_inner_h_array = xp.divide(d_inner_h * self.parameters["luminosity_distance"], 
