@@ -238,7 +238,7 @@ class CUPYGravitationalWaveTransient(Likelihood):
                 time_delay_numbers = xp.asarray(-2j * np.pi * time_delay)
                 signal_ifo = xp.multiply(signal_ifo, xp.exp(xp.multiply(time_delay_numbers, self.frequency_array)))
             else:
-                ll_parameters, _ = convert_to_lal_binary_black_hole_parameters(self.parameters.copy())
+                all_parameters, _ = convert_to_lal_binary_black_hole_parameters(self.parameters.copy())
 
                 #TF2_chirpTime(self, fseries_Hz, m1, m2, chi1z, chi2z, WFdict)
                 chirptimes_seconds = self.TF2_chirpTime(
@@ -294,9 +294,9 @@ class CUPYGravitationalWaveTransient(Likelihood):
         complex_matched_filter_snr = xp.divide(d_inner_h, xp.sqrt(h_inner_h))
 
         return self._CalculatedSNRs(
-            d_inner_h=d_inner_h, 
-            optimal_snr_squared=h_inner_h,
-            complex_matched_filter_snr=complex_matched_filter_snr,
+            d_inner_h=d_inner_h[0], 
+            optimal_snr_squared=h_inner_h[0],
+            complex_matched_filter_snr=complex_matched_filter_snr[0],
             d_inner_h_squared_tc_array=self.d_inner_h_squared_tc_array)
 
     def distance_marglinalized_likelihood(self, d_inner_h, h_inner_h):
