@@ -344,7 +344,7 @@ class CUPYGravitationalWaveTransient(Likelihood):
 
         return dict(plus = plus_pol_tensor, cross = cross_pol_tensor), omega
 
-    def timeDelay_from_GeoCenter(detector_vertex, omega):
+    def timeDelay_from_GeoCenter(self, detector_vertex, omega):
         GeoCenter_vertex = np.array([0, 0, 0])
         delta_d = xp.array(GeoCenter_vertex - detector_vertex)
         return xp.divide(xp.einsum('i...,i->...', omega, delta_d), lal.C_SI)
