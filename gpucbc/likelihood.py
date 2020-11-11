@@ -182,7 +182,8 @@ class CUPYGravitationalWaveTransient(Likelihood):
                 waveform_polarizations=waveform_polarizations,
                 interferometer=interferometer,
                 TD_polarization_tensors=td_pol_tensors,
-                TimeDelay_omega=timeDelay_omega
+                TimeDelay_omega=timeDelay_omega,
+                cupyArray_return=True
             )
             #d_inner_h += d_inner_h_ifo
             #h_inner_h += h_inner_h_ifo
@@ -201,7 +202,7 @@ class CUPYGravitationalWaveTransient(Likelihood):
             log_l = -2 / self.duration * (h_inner_h - 2 * xp.real(d_inner_h))
         return float(log_l.real)
 
-    def calculate_snrs(self, waveform_polarizations, interferometer, TD_polarization_tensors=None, TimeDelay_omega=None):
+    def calculate_snrs(self, waveform_polarizations, interferometer, TD_polarization_tensors=None, TimeDelay_omega=None, cupyArray_return=False):
         name = interferometer.name
         if TD_polarization_tensors is None:
             if not self.td_antenna_pattern:
@@ -261,7 +262,8 @@ class CUPYGravitationalWaveTransient(Likelihood):
                                 waveform_polarizations=waveform_polarizations,
                                 interferometer=interferometer,
                                 TD_polarization_tensors=td_pol_tensors,
-                                TimeDelay_omega=timeDelay_omega
+                                TimeDelay_omega=timeDelay_omega,
+                                cupyArray_return=cupyArray_return
                                 )
 
         else:
@@ -293,11 +295,32 @@ class CUPYGravitationalWaveTransient(Likelihood):
 
         complex_matched_filter_snr = xp.divide(d_inner_h, xp.sqrt(h_inner_h))
 
-        return self._CalculatedSNRs(
-            d_inner_h=d_inner_h[0], 
-            optimal_snr_squared=h_inner_h[0],
-            complex_matched_filter_snr=complex_matched_filter_snr[0],
-            d_inner_h_squared_tc_array=self.d_inner_h_squared_tc_array)
+        if cupyArray_return:
+            return self._CalculatedSNRs(
+                d_inner_h=d_inner_h, 
+                optimal_snr_squared=h_inner_h,
+                complex_matched_filter_snr=complex_matched_filter_snr,
+                d_inner_h_squared_tc_array=self.d_inner_h_squared_tc_array)
+
+        else:
+            if hasattr(d_inner_h, '__len__'):
+                d_inner_h_number = xp.asnumpy(d_inner_h)[0]
+            else:
+                d_inner_h_number = d_inner_h
+            if hasattr(h_inner_h, '__len__'):
+                h_inner_h_number = xp.asnumpy(h_inner_h)[0]
+            else:
+                h_inner_h_number = h_inner_h
+            if hasattr(complex_matched_filter_snr, '__len__'):
+                complex_matched_filter_snr_number = xp.asnumpy(complex_matched_filter_snr)[0]
+            else:
+                complex_matched_filter_snr_number = complex_matched_filter_snr
+
+            return self._CalculatedSNRs(
+                d_inner_h=d_inner_h_number, 
+                optimal_snr_squared=h_inner_h_number,
+                complex_matched_filter_snr=complex_matched_filter_snr_number,
+                d_inner_h_squared_tc_array=self.d_inner_h_squared_tc_array)
 
     def distance_marglinalized_likelihood(self, d_inner_h, h_inner_h):
         d_inner_h_array = xp.divide(d_inner_h * self.parameters["luminosity_distance"], 
