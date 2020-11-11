@@ -304,15 +304,15 @@ class CUPYGravitationalWaveTransient(Likelihood):
 
         else:
             if hasattr(d_inner_h, '__len__'):
-                d_inner_h_number = xp.asnumpy(d_inner_h)[0]
+                d_inner_h_number = xp.asnumpy(d_inner_h).item()
             else:
                 d_inner_h_number = d_inner_h
             if hasattr(h_inner_h, '__len__'):
-                h_inner_h_number = xp.asnumpy(h_inner_h)[0]
+                h_inner_h_number = xp.asnumpy(h_inner_h).item()
             else:
                 h_inner_h_number = h_inner_h
             if hasattr(complex_matched_filter_snr, '__len__'):
-                complex_matched_filter_snr_number = xp.asnumpy(complex_matched_filter_snr)[0]
+                complex_matched_filter_snr_number = xp.asnumpy(complex_matched_filter_snr).item()
             else:
                 complex_matched_filter_snr_number = complex_matched_filter_snr
 
