@@ -13,6 +13,8 @@ from bilby.gw.conversion import convert_to_lal_binary_black_hole_parameters
 import lal
 import lalsimulation as lalsim
 
+from collections import namedtuple
+
 
 class CUPYGravitationalWaveTransient(Likelihood):
 
