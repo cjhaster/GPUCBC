@@ -237,9 +237,8 @@ class CUPYGravitationalWaveTransient(Likelihood):
                 axis=0,
             )#[interferometer.frequency_mask]
 
-            time_delay_time_numbers = self.parameters["geocent_time"] 
-                                        - interferometer.strain_data.start_time
-            TD_time_delay_f_gc = timeDelay_from_GeoCenter(interferometer.geometry.vertex, TimeDelay_omega)
+            time_delay_time_numbers = self.parameters["geocent_time"] - interferometer.strain_data.start_time
+            TD_time_delay_f_gc = self.timeDelay_from_GeoCenter(interferometer.geometry.vertex, TimeDelay_omega)
             TD_time_delay = xp.add(time_delay_time_numbers, TD_time_delay_f_gc)
             time_delay_numbers = xp.multiply(-2j * np.pi, TD_time_delay)
             #signal_ifo *= xp.exp(-2j * np.pi * time_delay * self.frequency_array)
