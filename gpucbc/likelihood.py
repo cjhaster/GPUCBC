@@ -9,11 +9,14 @@ except ImportError:
 
 from bilby.core.likelihood import Likelihood
 from bilby.gw.conversion import convert_to_lal_binary_black_hole_parameters
+from bilby.core.prior import Interped
 
 import lal
 import lalsimulation as lalsim
 
-from collections import namedtuple
+from collections import 
+
+from scipy.interpolate import interp1d
 
 
 class CUPYGravitationalWaveTransient(Likelihood):
@@ -69,8 +72,10 @@ class CUPYGravitationalWaveTransient(Likelihood):
         if self.distance_marginalization:
             self._setup_distance_marginalization()
             priors["luminosity_distance"] = priors["luminosity_distance"].minimum
+            self._ref_dist = priors["luminosity_distance"]
         if self.phase_marginalization:
             priors["phase"] = 0.0
+            self._setup_phase_marginalization()
         self.time_marginalization = False
         self.d_inner_h_squared_tc_array = None
         self.td_antenna_pattern = td_antenna_pattern
@@ -365,9 +370,6 @@ class CUPYGravitationalWaveTransient(Likelihood):
         ) * (self.distance_array[1] - self.distance_array[0])
         self.distance_array = xp.asarray(self.distance_array)
 
-    def generate_posterior_sample_from_marginalized_likelihood(self):
-        return self.parameters.copy()
-
     def gmst_interpolant(self, GPStimes):
         return xp.add(self.gmst_interp_intercept, xp.multiply(GPStimes, self.gmst_interp_slope))
 
@@ -472,6 +474,141 @@ class CUPYGravitationalWaveTransient(Likelihood):
         ChirpTimeSec = xp.divide(xp.multiply(dPhi_diff,Mtot_s),(2*np.pi))
         
         return ChirpTimeSec
+
+    def generate_posterior_sample_from_marginalized_likelihood(self):
+        #return self.parameters.copy()
+
+        # https://git.ligo.org/lscsoft/bilby/-/blob/master/bilby/gw/likelihood.py#L344
+
+        if any([self.phase_marginalization, self.distance_marginalization]):
+            signal_polarizations = copy.deepcopy(
+                self.waveform_generator.frequency_domain_strain(
+                    self.parameters))
+        else:
+            return self.parameters
+
+        if self.distance_marginalization:
+            new_distance = self.generate_distance_sample_from_marginalized_likelihood(
+                signal_polarizations=signal_polarizations)
+            self.parameters['luminosity_distance'] = new_distance
+
+        if self.phase_marginalization:
+            new_phase = self.generate_phase_sample_from_marginalized_likelihood(
+                signal_polarizations=signal_polarizations)
+            self.parameters['phase'] = new_phase
+        return self.parameters.copy()
+
+    def generate_distance_sample_from_marginalized_likelihood(
+            self, signal_polarizations=None):
+        """
+        Generate a single sample from the posterior distribution for luminosity
+        distance when using a likelihood which explicitly marginalises over
+        distance.
+
+        See Eq. (C29-C32) of https://arxiv.org/abs/1809.02293
+
+        Parameters
+        ----------
+        signal_polarizations: dict, optional
+            Polarizations modes of the template.
+            Note: These are rescaled in place after the distance sample is
+                  generated to allow further parameter reconstruction to occur.
+
+        Returns
+        -------
+        new_distance: float
+            Sample from the distance posterior.
+        """
+        #self.parameters.update(self.get_sky_frame_parameters())
+        if signal_polarizations is None:
+            signal_polarizations = \
+                self.waveform_generator.frequency_domain_strain(self.parameters)
+        d_inner_h, h_inner_h = self._calculate_inner_products(signal_polarizations)
+
+        d_inner_h_dist = (
+            d_inner_h * self.parameters['luminosity_distance'] /
+            self.distance_array)
+
+        h_inner_h_dist = (
+            h_inner_h * self.parameters['luminosity_distance']**2 /
+            self.distance_array**2)
+
+        if self.phase_marginalization:
+            distance_log_like = (
+                self._bessel_function_interped(abs(d_inner_h_dist)) -
+                h_inner_h_dist.real / 2)
+        else:
+            distance_log_like = (d_inner_h_dist.real - h_inner_h_dist.real / 2)
+
+        distance_post = (np.exp(distance_log_like - max(distance_log_like)) *
+                         self.distance_prior_array)
+
+        new_distance = Interped(
+            self.distance_array, distance_post).sample()
+
+        self._rescale_signal(signal_polarizations, new_distance)
+        return new_distance
+
+    def generate_phase_sample_from_marginalized_likelihood(
+            self, signal_polarizations=None):
+        # https://git.ligo.org/lscsoft/bilby/-/blob/master/bilby/gw/likelihood.py#L521
+        """
+        Generate a single sample from the posterior distribution for phase when
+        using a likelihood which explicitly marginalises over phase.
+
+        See Eq. (C29-C32) of https://arxiv.org/abs/1809.02293
+
+        Parameters
+        ----------
+        signal_polarizations: dict, optional
+            Polarizations modes of the template.
+
+        Returns
+        -------
+        new_phase: float
+            Sample from the phase posterior.
+
+        Notes
+        -----
+        This is only valid when assumes that mu(phi) \propto exp(-2i phi).
+        """
+        #self.parameters.update(self.get_sky_frame_parameters())
+        if signal_polarizations is None:
+            signal_polarizations = \
+                self.waveform_generator.frequency_domain_strain(self.parameters)
+        d_inner_h, h_inner_h = self._calculate_inner_products(signal_polarizations)
+
+        phases = np.linspace(0, 2 * np.pi, 101)
+        phasor = np.exp(-2j * phases)
+        phase_log_post = d_inner_h * phasor - h_inner_h / 2
+        phase_post = np.exp(phase_log_post.real - max(phase_log_post.real))
+        new_phase = Interped(phases, phase_post).sample()
+        return new_phase
+
+    def _calculate_inner_products(self, signal_polarizations):
+        d_inner_h = 0
+        h_inner_h = 0
+        for interferometer in self.interferometers:
+            per_detector_snr = self.calculate_snrs(
+                signal_polarizations, interferometer)
+
+            d_inner_h += per_detector_snr.d_inner_h
+            h_inner_h += per_detector_snr.optimal_snr_squared
+        return d_inner_h, h_inner_h
+
+    def _setup_phase_marginalization(self, min_bound=-5, max_bound=10):
+        self._bessel_function_interped = interp1d(
+            np.logspace(-5, max_bound, int(1e6)), np.logspace(-5, max_bound, int(1e6)) +
+            np.log([i0e(snr) for snr in np.logspace(-5, max_bound, int(1e6))]),
+            bounds_error=False, fill_value=(0, np.nan))
+
+    def _rescale_signal(self, signal, new_distance):
+        for mode in signal:
+            signal[mode] *= self._ref_dist / new_distance
+
+
+
+
 
 
 
