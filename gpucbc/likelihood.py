@@ -74,12 +74,13 @@ class CUPYGravitationalWaveTransient(Likelihood):
         self.phase_marginalization = phase_marginalization
         if self.distance_marginalization:
             self._setup_distance_marginalization()
+            priors["luminosity_distance"] = float(self._ref_dist)
             #priors["luminosity_distance"] = priors["luminosity_distance"].minimum
             #self._ref_dist = self.priors['luminosity_distance'].rescale(0.5)
             #self.priors["luminosity_distance"] = float(self._ref_dist)
         if self.phase_marginalization:
-            self.priors["phase"] = 0.0
             self._setup_phase_marginalization()
+            priors["phase"] = 0.0
         self.time_marginalization = False
         self.d_inner_h_squared_tc_array = None
         self.td_antenna_pattern = td_antenna_pattern
@@ -386,7 +387,6 @@ class CUPYGravitationalWaveTransient(Likelihood):
         #) * (self.distance_array[1] - self.distance_array[0])
 
         self._ref_dist = self.priors['luminosity_distance'].rescale(0.5)
-        self.priors["luminosity_distance"] = float(self._ref_dist)
 
         self.dist_log_l_norm = xp.asarray(logsumexp(0. / self.distance_array, 
                                            b=self.distance_prior_array))
