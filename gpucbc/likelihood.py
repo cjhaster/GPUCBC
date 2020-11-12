@@ -74,10 +74,11 @@ class CUPYGravitationalWaveTransient(Likelihood):
         self.phase_marginalization = phase_marginalization
         if self.distance_marginalization:
             self._setup_distance_marginalization()
-            priors["luminosity_distance"] = priors["luminosity_distance"].minimum
-            self._ref_dist = priors["luminosity_distance"]
+            #priors["luminosity_distance"] = priors["luminosity_distance"].minimum
+            #self._ref_dist = self.priors['luminosity_distance'].rescale(0.5)
+            #self.priors["luminosity_distance"] = float(self._ref_dist)
         if self.phase_marginalization:
-            priors["phase"] = 0.0
+            self.priors["phase"] = 0.0
             self._setup_phase_marginalization()
         self.time_marginalization = False
         self.d_inner_h_squared_tc_array = None
@@ -352,7 +353,10 @@ class CUPYGravitationalWaveTransient(Likelihood):
             log_l_array = -2 / self.duration * (
                 h_inner_h_array - 2 * xp.real(d_inner_h_array)
             )
-        log_l = logsumexp(log_l_array, b=self.distance_prior_array)
+        log_l_unnorm = logsumexp(log_l_array, b=self.distance_prior_array)
+
+        log_l = xp.subtract(log_l_unnorm, self.dist_log_l_norm)
+
         return log_l
 
     def phase_marginalized_likelihood(self, d_inner_h, h_inner_h):
@@ -363,15 +367,29 @@ class CUPYGravitationalWaveTransient(Likelihood):
         return log_l
 
     def _setup_distance_marginalization(self):
-        self.distance_array = np.linspace(
+        distance_array = np.linspace(
             self.priors["luminosity_distance"].minimum,
             self.priors["luminosity_distance"].maximum,
             10000,
         )
-        self.distance_prior_array = xp.asarray(
-            self.priors["luminosity_distance"].prob(self.distance_array)
-        ) * (self.distance_array[1] - self.distance_array[0])
-        self.distance_array = xp.asarray(self.distance_array)
+        self.distance_array = xp.asarray(distance_array)
+
+        distance_prior_array = np.array(
+                [self.priors['luminosity_distance'].prob(distance)
+                 for distance in distance_array]
+        )* (distance_array[1] - distance_array[0])
+
+        self.distance_prior_array = xp.asarray(distance_prior_array)
+
+        #self.distance_prior_array = xp.asarray(
+        #    self.priors["luminosity_distance"].prob(self.distance_array)
+        #) * (self.distance_array[1] - self.distance_array[0])
+
+        self._ref_dist = self.priors['luminosity_distance'].rescale(0.5)
+        self.priors["luminosity_distance"] = float(self._ref_dist)
+
+        self.dist_log_l_norm = xp.asarray(logsumexp(0. / self.distance_array, 
+                                           b=self.distance_prior_array))
 
     def gmst_interpolant(self, GPStimes):
         return xp.add(self.gmst_interp_intercept, xp.multiply(GPStimes, self.gmst_interp_slope))
