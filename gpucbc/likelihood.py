@@ -17,6 +17,7 @@ import lalsimulation as lalsim
 from collections import namedtuple
 
 from scipy.interpolate import interp1d
+from scipy.special import i0e as ss_i0e
 
 
 class CUPYGravitationalWaveTransient(Likelihood):
@@ -599,7 +600,7 @@ class CUPYGravitationalWaveTransient(Likelihood):
     def _setup_phase_marginalization(self, min_bound=-5, max_bound=10):
         self._bessel_function_interped = interp1d(
             np.logspace(-5, max_bound, int(1e6)), np.logspace(-5, max_bound, int(1e6)) +
-            np.log([i0e(snr) for snr in np.logspace(-5, max_bound, int(1e6))]),
+            np.log([ss_i0e(snr) for snr in np.logspace(-5, max_bound, int(1e6))]),
             bounds_error=False, fill_value=(0, np.nan))
 
     def _rescale_signal(self, signal, new_distance):
