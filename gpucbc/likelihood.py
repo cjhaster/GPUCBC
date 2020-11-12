@@ -528,13 +528,16 @@ class CUPYGravitationalWaveTransient(Likelihood):
                 self.waveform_generator.frequency_domain_strain(self.parameters)
         d_inner_h, h_inner_h = self._calculate_inner_products(signal_polarizations)
 
+        numpy_distance_array = xp.asnumpy(self.distance_array)
+        numpy_distance_prior_array = xp.asnumpy(self.distance_prior_array)
+
         d_inner_h_dist = (
             d_inner_h * self.parameters['luminosity_distance'] /
-            self.distance_array)
+            numpy_distance_array)
 
         h_inner_h_dist = (
             h_inner_h * self.parameters['luminosity_distance']**2 /
-            self.distance_array**2)
+            numpy_distance_array**2)
 
         if self.phase_marginalization:
             distance_log_like = (
@@ -544,10 +547,10 @@ class CUPYGravitationalWaveTransient(Likelihood):
             distance_log_like = (d_inner_h_dist.real - h_inner_h_dist.real / 2)
 
         distance_post = (np.exp(distance_log_like - max(distance_log_like)) *
-                         self.distance_prior_array)
+                         numpy_distance_prior_array)
 
         new_distance = Interped(
-            self.distance_array, distance_post).sample()
+            numpy_distance_array, distance_post).sample()
 
         self._rescale_signal(signal_polarizations, new_distance)
         return new_distance
