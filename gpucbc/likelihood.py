@@ -14,7 +14,7 @@ from bilby.core.prior import Interped
 import lal
 import lalsimulation as lalsim
 
-from collections import 
+from collections import namedtuple
 
 from scipy.interpolate import interp1d
 
