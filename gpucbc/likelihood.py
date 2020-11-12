@@ -19,6 +19,8 @@ from collections import namedtuple
 from scipy.interpolate import interp1d
 from scipy.special import i0e as ss_i0e
 
+import copy
+
 
 class CUPYGravitationalWaveTransient(Likelihood):
 
