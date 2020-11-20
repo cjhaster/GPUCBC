@@ -209,7 +209,8 @@ class CUPYGravitationalWaveTransient(Likelihood):
                 d_inner_h=d_inner_h, h_inner_h=h_inner_h
             )
         else:
-            log_l = -2 / self.duration * (h_inner_h - 2 * xp.real(d_inner_h))
+            #log_l = -2 / self.duration * (h_inner_h - 2 * xp.real(d_inner_h))
+            log_l = (-h_inner_h / 2) + xp.real(d_inner_h))
         return float(log_l.real)
 
     def calculate_snrs(self, waveform_polarizations, interferometer, TD_polarization_tensors=None, TimeDelay_omega=None, cupyArray_return=False):
@@ -300,8 +301,11 @@ class CUPYGravitationalWaveTransient(Likelihood):
         #d_inner_h = xp.sum(xp.conj(signal_ifo) * self.strain[name] / self.psds[name])
         d_inner_h = xp.sum(xp.divide(xp.multiply(xp.conj(signal_ifo), self.strain[name]),
             self.psds[name]))
+        d_inner_h = xp.multiply(d_inner_h, 4 / self.duration)
+        
         #h_inner_h = xp.sum(xp.abs(signal_ifo) ** 2 / self.psds[name])
         h_inner_h = xp.sum(xp.divide(xp.square(xp.abs(signal_ifo)), self.psds[name]))
+        h_inner_h = xp.multiply(h_inner_h, 4 / self.duration)
 
         complex_matched_filter_snr = xp.divide(d_inner_h, xp.sqrt(h_inner_h))
 
@@ -351,9 +355,11 @@ class CUPYGravitationalWaveTransient(Likelihood):
                 d_inner_h=d_inner_h_array, h_inner_h=h_inner_h_array
             )
         else:
-            log_l_array = -2 / self.duration * (
-                h_inner_h_array - 2 * xp.real(d_inner_h_array)
-            )
+            #log_l_array = -2 / self.duration * (
+            #    h_inner_h_array - 2 * xp.real(d_inner_h_array)
+            #)
+            log_l_array = xp.add(xp.multiply(-0.5, h_inner_h_array), xp.real(d_inner_h_array))
+
         log_l_unnorm = logsumexp(log_l_array, b=self.distance_prior_array)
 
         log_l = xp.subtract(log_l_unnorm, self.dist_log_l_norm)
@@ -363,8 +369,10 @@ class CUPYGravitationalWaveTransient(Likelihood):
     def phase_marginalized_likelihood(self, d_inner_h, h_inner_h):
         d_inner_h = xp.abs(d_inner_h)
         d_inner_h = xp.add(xp.log(i0e(d_inner_h)), d_inner_h)
-        log_l = xp.multiply(-2 / self.duration, xp.subtract(h_inner_h, xp.multiply(2., d_inner_h)))
+        #log_l = xp.multiply(-2 / self.duration, xp.subtract(h_inner_h, xp.multiply(2., d_inner_h)))
         #log_l = -2 / self.duration * (h_inner_h - 2 * d_inner_h)
+        log_l = xp.add(xp.multiply(-0.5, h_inner_h), xp.real(d_inner_h))
+        
         return log_l
 
     def _setup_distance_marginalization(self):
@@ -633,7 +641,7 @@ class CUPYGravitationalWaveTransient(Likelihood):
 
 
 
-
+# see https://github.com/ColmTalbot/GPUCBC/pull/8/files for inner product normalisation
 
 
 
